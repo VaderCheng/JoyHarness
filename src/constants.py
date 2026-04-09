@@ -60,7 +60,7 @@ DEFAULT_MAPPINGS: dict = {
         "A":      {"action": "tap", "key": "enter"},
         "B":      {"action": "tap", "key": "escape"},
         "X":      {"action": "auto", "key": "f2"},
-        "Y":      {"action": "combination", "keys": ["ctrl", "c"]},
+        "Y":      {"action": "sequence", "keys": ["alt", "tab"], "repeat": 500},
         "R":      {"action": "hold", "key": "ctrl"},
         "ZR":     {"action": "hold", "key": "shift"},
         "Plus":   {"action": "combination", "keys": ["ctrl", "s"]},
@@ -86,4 +86,4 @@ DEFAULT_CONFIG: dict = {
     "mappings": DEFAULT_MAPPINGS,
 }
 
-VALID_ACTIONS = ("tap", "hold", "auto", "combination")
+VALID_ACTIONS = ("tap", "hold", "auto", "combination", "sequence")

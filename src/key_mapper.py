@@ -42,6 +42,12 @@ class KeyMapper:
         # Track currently active modifier/hold keys: btn_idx → key_name
         self._active_holds: dict[int, str] = {}
 
+        # Track active sequence holds: btn_idx → list of keys
+        self._active_sequences: dict[int, list[str]] = {}
+
+        # Track sequence repeat: btn_idx → {keys, interval, last_time}
+        self._sequence_repeat: dict[int, dict] = {}
+
         # Track auto-action pending state: btn_idx → (key, press_time)
         self._auto_pending: dict[int, tuple[str, float]] = {}
 
@@ -86,9 +92,40 @@ class KeyMapper:
             keyboard_output.send_combination(keys)
             logger.debug("combination [%s] → %s", btn_name, "+".join(keys))
 
+        elif action == "sequence":
+            # Press first key (modifier) and hold, then tap remaining keys
+            keys = mapping["keys"]
+            repeat_ms = mapping.get("repeat", 0)
+            # Press modifier (first key) and hold
+            keyboard_output.press(keys[0])
+            time.sleep(0.02)
+            # Tap subsequent keys once
+            for key in keys[1:]:
+                keyboard_output.tap(key)
+            self._active_holds[button_index] = "__sequence__"
+            self._active_sequences[button_index] = keys
+            # If repeat enabled, set up repeat for keys[1:]
+            if repeat_ms > 0 and len(keys) > 1:
+                self._sequence_repeat[button_index] = {
+                    "keys": keys[1:],
+                    "interval": repeat_ms / 1000.0,
+                    "last_time": time.monotonic(),
+                }
+            logger.debug("sequence DOWN [%s] → %s (held, repeat=%sms)",
+                         btn_name, "+".join(keys), repeat_ms)
+
     def button_up(self, button_index: int) -> None:
         """Handle a button release event."""
         btn_name = _button_label(button_index)
+
+        # Handle sequence release (reverse order)
+        if button_index in self._active_sequences:
+            self._sequence_repeat.pop(button_index, None)
+            keys = self._active_sequences.pop(button_index)
+            for key in reversed(keys):
+                keyboard_output.release(key)
+            logger.debug("sequence UP [%s] → %s released", btn_name, "+".join(keys))
+            return
 
         # Handle hold release
         if button_index in self._active_holds:
@@ -134,6 +171,16 @@ class KeyMapper:
 
         # Stick auto-actions: already activated immediately in stick_direction(), no pending check needed
 
+        # Sequence repeat (e.g., Alt held + Tab every N ms)
+        for btn_idx in list(self._sequence_repeat.keys()):
+            info = self._sequence_repeat[btn_idx]
+            if now - info["last_time"] >= info["interval"]:
+                for key in info["keys"]:
+                    keyboard_output.tap(key)
+                info["last_time"] = now
+                btn_name = _button_label(btn_idx)
+                logger.debug("sequence repeat [%s] → %s", btn_name, "+".join(info["keys"]))
+
     def _release_stick_auto(self) -> None:
         """Release current stick hold key."""
         stick_keys = [k for k in self._active_holds if isinstance(k, tuple) and k[0] == "stick"]
@@ -172,6 +219,13 @@ class KeyMapper:
 
     def release_all(self) -> None:
         """Release all currently held keys and cancel pending auto actions."""
+        # Release sequences in reverse
+        for keys in self._active_sequences.values():
+            for key in reversed(keys):
+                keyboard_output.release(key)
+        self._active_sequences.clear()
+        self._sequence_repeat.clear()
+        # Release holds
         for key in self._active_holds.values():
             keyboard_output.release(key)
         self._active_holds.clear()

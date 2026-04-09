@@ -6,6 +6,7 @@ disconnection detection, and automatic reconnection.
 
 from __future__ import annotations
 
+import threading
 import time
 import logging
 
@@ -141,6 +142,7 @@ def run_polling_loop(
     joystick: pygame.joystick.Joystick,
     key_mapper: KeyMapper,
     config: dict,
+    stop_event: threading.Event | None = None,
 ) -> None:
     """Main polling loop: read controller state and dispatch to key_mapper.
 
@@ -148,6 +150,7 @@ def run_polling_loop(
         joystick: Initialized pygame Joystick instance.
         key_mapper: KeyMapper instance for action dispatch.
         config: Complete configuration dict.
+        stop_event: Threading event to signal loop exit. None = run until Ctrl+C.
     """
     deadzone = config.get("deadzone", 0.15)
     poll_interval = config.get("poll_interval", 0.01)
@@ -164,7 +167,7 @@ def run_polling_loop(
                 deadzone, poll_interval * 1000, stick_mode)
 
     try:
-        while True:
+        while not (stop_event and stop_event.is_set()):
             pygame.event.pump()
 
             # --- Button polling ---

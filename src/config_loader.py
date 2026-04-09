@@ -148,14 +148,14 @@ def _validate_mapping_entry(name: str, mapping: dict) -> list[str]:
         elif not _is_valid_key(key):
             errors.append(f"'{name}' has invalid key name: '{key}'")
 
-    elif action == "combination":
+    elif action in ("combination", "sequence"):
         keys = mapping.get("keys")
         if not isinstance(keys, list) or len(keys) == 0:
-            errors.append(f"'{name}' combination action requires a non-empty 'keys' list")
+            errors.append(f"'{name}' {action} action requires a non-empty 'keys' list")
         else:
             for key in keys:
                 if not isinstance(key, str):
-                    errors.append(f"'{name}' combination keys must be strings")
+                    errors.append(f"'{name}' {action} keys must be strings")
                 elif not _is_valid_key(key):
                     errors.append(f"'{name}' has invalid key name in combination: '{key}'")
 

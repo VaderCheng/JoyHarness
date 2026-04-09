@@ -13,6 +13,7 @@ import argparse
 import ctypes
 import logging
 import sys
+import threading
 from pathlib import Path
 
 # Allow running as `python src/main.py` or `python -m src.main`
@@ -23,6 +24,7 @@ import pygame
 from src.config_loader import load_config
 from src.joycon_reader import find_joycon, run_discover_mode, run_polling_loop, wait_for_reconnection
 from src.key_mapper import KeyMapper
+from src.tray_icon import create_tray_icon, run_tray
 
 
 def is_admin() -> bool:
@@ -177,15 +179,42 @@ def main() -> None:
     print(f"Controller: {js.get_name()}")
     print(f"Buttons: {js.get_numbuttons()}, Axes: {js.get_numaxes()}")
     print(f"Deadzone: {config['deadzone']}, Stick mode: {config['stick_mode']}")
-    print(f"\nMapping active. Press Ctrl+C to exit.\n")
 
     key_mapper = KeyMapper(config)
+    stop_event = threading.Event()
 
+    # Start polling loop in background thread
+    poll_thread = threading.Thread(
+        target=_run_polling,
+        args=(js, key_mapper, config, stop_event),
+        daemon=True,
+    )
+    poll_thread.start()
+
+    # Create and run tray icon in main thread (blocks until quit)
+    icon = create_tray_icon(stop_event)
+    print("Tray icon active. Right-click to quit.")
+    run_tray(icon)
+
+    # Cleanup after tray exits
+    stop_event.set()
+    poll_thread.join(timeout=2.0)
+    key_mapper.release_all()
+    pygame.quit()
+    print("Clean exit. All keys released.")
+
+
+def _run_polling(
+    joystick,
+    key_mapper: KeyMapper,
+    config: dict,
+    stop_event: threading.Event,
+) -> None:
+    """Run polling loop in a background thread, handling exceptions."""
     try:
-        run_polling_loop(js, key_mapper, config)
-    finally:
-        pygame.quit()
-        print("\nClean exit. All keys released.")
+        run_polling_loop(joystick, key_mapper, config, stop_event)
+    except Exception:
+        logger.exception("Polling thread error")
 
 
 if __name__ == "__main__":

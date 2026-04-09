@@ -9,7 +9,7 @@
       "A":      { "action": "tap",         "key": "enter" },
       "B":      { "action": "tap",         "key": "escape" },
       "X":      { "action": "auto",        "key": "f2" },
-      "Y":      { "action": "combination", "keys": ["ctrl", "c"] },
+      "Y":      { "action": "sequence",   "keys": ["alt", "tab"], "repeat": 500 },
       "R":      { "action": "hold",        "key": "ctrl" },
       "ZR":     { "action": "hold",        "key": "shift" },
       "Plus":   { "action": "combination", "keys": ["ctrl", "s"] },

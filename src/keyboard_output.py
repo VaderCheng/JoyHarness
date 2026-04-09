@@ -41,16 +41,20 @@ def tap(key: str, duration: float = 0.02) -> None:
     logger.debug("tapped: %s", key)
 
 
-def send_combination(keys: list[str]) -> None:
+def send_combination(keys: list[str], hold: float = 0.05) -> None:
     """Press multiple keys simultaneously, then release in reverse order.
 
     Example: send_combination(["ctrl", "c"]) → Ctrl+C
+
+    Args:
+        keys: Key names in press order.
+        hold: Duration to hold all keys before releasing (seconds).
     """
     for key in keys:
         keyboard.press(key)
         time.sleep(0.01)
 
-    time.sleep(0.02)
+    time.sleep(hold)
 
     for key in reversed(keys):
         keyboard.release(key)
