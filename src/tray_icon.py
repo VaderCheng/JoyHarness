@@ -49,12 +49,14 @@ def create_icon_image() -> Image.Image:
 def create_tray_icon(
     stop_event: threading.Event,
     on_show_mappings: Callable | None = None,
+    on_show_window: Callable | None = None,
 ) -> pystray.Icon:
     """Create and return a system tray icon.
 
     Args:
         stop_event: Threading event to signal program exit.
         on_show_mappings: Optional callback to display current mappings.
+        on_show_window: Optional callback to show the main GUI window.
 
     Returns:
         Configured pystray.Icon instance (not yet running).
@@ -62,6 +64,9 @@ def create_tray_icon(
     image = create_icon_image()
 
     menu_items = []
+
+    if on_show_window:
+        menu_items.append(pystray.MenuItem("显示主界面", on_show_window))
 
     if on_show_mappings:
         menu_items.append(pystray.MenuItem("显示映射", on_show_mappings))

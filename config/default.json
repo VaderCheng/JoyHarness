@@ -4,6 +4,7 @@
   "deadzone": 0.2,
   "poll_interval": 0.01,
   "stick_mode": "4dir",
+  "switch_scroll_interval": 400,
   "mappings": {
     "buttons": {
       "A":      { "action": "tap",         "key": "enter" },

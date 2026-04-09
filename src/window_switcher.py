@@ -1,7 +1,7 @@
-"""VS Code window enumeration and switching using Windows API.
+"""Window enumeration and switching using Windows API.
 
 Uses ctypes to call Win32 APIs for finding and switching between
-VS Code windows without going through Alt+Tab.
+application windows without going through Alt+Tab.
 """
 
 import ctypes
@@ -17,6 +17,12 @@ kernel32 = ctypes.windll.kernel32
 WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+# Known applications for window switching: display name → process name
+KNOWN_APPS: dict[str, str] = {
+    "VS Code": "code.exe",
+    "飞书": "feishu.exe",
+}
 
 
 def get_foreground_process_name() -> str:
@@ -48,8 +54,11 @@ def _get_process_name(hwnd: int) -> str:
         kernel32.CloseHandle(handle)
 
 
-def find_vscode_windows() -> list[WindowInfo]:
-    """Enumerate all visible VS Code windows.
+def find_windows(app_names: list[str] | None = None) -> list[WindowInfo]:
+    """Enumerate all visible windows matching the given process names.
+
+    Args:
+        app_names: List of process names to match (lowercase). None = match all.
 
     Returns:
         List of WindowInfo(hwnd, title) sorted by window title.
@@ -69,7 +78,7 @@ def find_vscode_windows() -> list[WindowInfo]:
         title = buf.value
 
         exe_name = _get_process_name(hwnd)
-        if exe_name == "code.exe":
+        if app_names is None or exe_name in app_names:
             results.append(WindowInfo(hwnd, title))
 
         return True
@@ -103,28 +112,40 @@ def switch_to_window(hwnd: int) -> None:
 
 
 class WindowCycler:
-    """Cycle through VS Code windows in order on each call."""
+    """Cycle through application windows in order on each call."""
 
-    def __init__(self) -> None:
+    def __init__(self, app_names: list[str] | None = None) -> None:
+        self._app_names: list[str] = app_names or ["code.exe"]
         self._windows: list[WindowInfo] = []
         self._current_index: int = -1
 
-    def refresh(self) -> int:
-        """Re-scan VS Code windows. Returns count found."""
-        self._windows = find_vscode_windows()
+    @property
+    def app_names(self) -> list[str]:
+        """Get the current target app process names."""
+        return self._app_names
 
-        # Preserve current index if possible
+    @app_names.setter
+    def app_names(self, names: list[str]) -> None:
+        """Set target app process names and clear cached window list."""
+        self._app_names = names
+        self._windows.clear()
+        self._current_index = -1
+
+    def refresh(self) -> int:
+        """Re-scan windows. Returns count found."""
+        self._windows = find_windows(self._app_names)
+
         if self._current_index >= len(self._windows):
             self._current_index = 0
 
-        logger.info("Found %d VS Code windows", len(self._windows))
+        logger.info("Found %d windows for %s", len(self._windows), self._app_names)
         for i, w in enumerate(self._windows):
             logger.debug("  [%d] %s (hwnd=%d)", i, w.title, w.hwnd)
 
         return len(self._windows)
 
     def next(self) -> WindowInfo | None:
-        """Switch to the next VS Code window in the list.
+        """Switch to the next window in the list.
 
         Auto-refreshes if no windows cached.
         Returns the WindowInfo switched to, or None if no windows found.
@@ -133,12 +154,12 @@ class WindowCycler:
             self.refresh()
 
         if not self._windows:
-            logger.warning("No VS Code windows found")
+            logger.warning("No windows found for %s", self._app_names)
             return None
 
         self._current_index = (self._current_index + 1) % len(self._windows)
         target = self._windows[self._current_index]
-        logger.info("Switching to VS Code [%d/%d]: %s",
+        logger.info("Switching to [%d/%d]: %s",
                     self._current_index + 1, len(self._windows), target.title)
         switch_to_window(target.hwnd)
         return target

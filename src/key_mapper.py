@@ -15,7 +15,8 @@ import logging
 
 from . import keyboard_output
 from .constants import BUTTON_INDICES
-from .window_switcher import WindowCycler, get_foreground_process_name
+from .switcher_overlay import SwitcherOverlay
+from .window_switcher import WindowCycler, get_foreground_process_name, find_windows
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,19 @@ class KeyMapper:
 
         self._long_threshold = long_threshold
 
+        # Stick mapping enabled (controllable from GUI)
+        self._stick_enabled: bool = True
+
         # Window cycler for VS Code window switching
         self._window_cycler = WindowCycler()
+
+        # Window switch overlay and state (tkinter root set later via set_tk_root)
+        self._switcher_overlay: SwitcherOverlay | None = None
+        self._ws_held: bool = False
+        self._ws_press_time: float = 0.0
+        self._ws_overlay_active: bool = False
+        self._ws_last_move: float = 0.0
+        self._ws_move_interval: float = config.get("switch_scroll_interval", 400) / 1000.0
 
         logger.info(
             "KeyMapper initialized: %d button mappings, %d direction mappings, "
@@ -69,6 +81,26 @@ class KeyMapper:
             len(self._direction_mappings),
             self._long_threshold,
         )
+
+    def _on_overlay_select(self, window_info) -> None:
+        """Callback when overlay selection is confirmed."""
+        from .window_switcher import switch_to_window
+        switch_to_window(window_info.hwnd)
+
+    def set_tk_root(self, root) -> None:
+        """Set the tkinter root for overlay creation. Call from main thread."""
+        import tkinter as tk
+        if isinstance(root, tk.Tk) and self._switcher_overlay is None:
+            self._switcher_overlay = SwitcherOverlay(root, on_select=self._on_overlay_select)
+
+    def _find_current_window_index(self, windows: list) -> int:
+        """Find the index of the current foreground window in the list."""
+        import ctypes
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        for i, w in enumerate(windows):
+            if w.hwnd == hwnd:
+                return i
+        return 0
 
     def button_down(self, button_index: int) -> None:
         """Handle a button press event."""
@@ -124,11 +156,11 @@ class KeyMapper:
                          btn_name, "+".join(keys), repeat_ms)
 
         elif action == "window_switch":
-            target = self._window_cycler.next()
-            if target:
-                logger.info("window_switch [%s] → %s", btn_name, target.title)
-            else:
-                logger.warning("window_switch [%s] → no VS Code windows found", btn_name)
+            # Record press time, decide short vs long in poll/button_up
+            self._ws_held = True
+            self._ws_press_time = time.monotonic()
+            self._ws_overlay_active = False
+            logger.debug("window_switch DOWN [%s] (waiting)", btn_name)
 
         elif action == "macro":
             self._execute_macro(mapping, btn_name)
@@ -169,6 +201,27 @@ class KeyMapper:
                     self._active_holds.pop(button_index, None)
                 logger.debug("auto UP [%s] → release %s (%.0fms)", btn_name, key, elapsed * 1000)
 
+        # Handle window_switch release
+        if self._ws_held:
+            self._ws_held = False
+            btn_name = _button_label(button_index)
+
+            if self._ws_overlay_active and self._switcher_overlay:
+                # Long press: select the highlighted window and hide overlay
+                selected = self._switcher_overlay.selected
+                self._switcher_overlay.hide()
+                self._ws_overlay_active = False
+                if selected:
+                    self._on_overlay_select(selected)
+                    logger.info("window_switch UP [%s] → selected: %s", btn_name, selected.title)
+            else:
+                # Short press: immediate switch to next
+                target = self._window_cycler.next()
+                if target:
+                    logger.info("window_switch UP [%s] → quick: %s", btn_name, target.title)
+                else:
+                    logger.warning("window_switch UP [%s] → no windows found", btn_name)
+
     def poll(self) -> None:
         """Call every polling cycle to handle auto-action long press activation.
 
@@ -208,6 +261,22 @@ class KeyMapper:
                 info["last_time"] = now
                 logger.debug("stick repeat [%s] → %s", k[1], info["key"])
 
+        # Window switch: long press → show overlay and cycle
+        if self._ws_held and not self._ws_overlay_active and self._switcher_overlay:
+            if now - self._ws_press_time >= self._long_threshold:
+                windows = find_windows(self._window_cycler.app_names)
+                if windows:
+                    initial = self._find_current_window_index(windows)
+                    self._switcher_overlay.show(windows, initial_index=initial)
+                    self._ws_overlay_active = True
+                    self._ws_last_move = now
+                    logger.info("window_switch overlay: %d windows", len(windows))
+
+        if self._ws_held and self._ws_overlay_active and self._switcher_overlay:
+            if now - self._ws_last_move >= self._ws_move_interval:
+                self._switcher_overlay.move_next()
+                self._ws_last_move = now
+
     def _release_stick_auto(self) -> None:
         """Release current stick hold key and cancel repeat."""
         stick_keys = [k for k in self._active_holds if isinstance(k, tuple) and k[0] == "stick"]
@@ -219,6 +288,9 @@ class KeyMapper:
 
     def stick_direction(self, direction: str) -> None:
         """Handle a stick direction change event."""
+        if not self._stick_enabled:
+            return
+
         # Release any previously active stick direction hold
         self._release_stick_auto()
 
@@ -248,11 +320,18 @@ class KeyMapper:
 
     def stick_centered(self) -> None:
         """Handle stick returning to center."""
+        if not self._stick_enabled:
+            return
         self._release_stick_auto()
         logger.debug("stick centered")
 
     def release_all(self) -> None:
         """Release all currently held keys and cancel pending auto actions."""
+        # Hide overlay if active
+        self._ws_held = False
+        self._ws_overlay_active = False
+        if self._switcher_overlay:
+            self._switcher_overlay.hide()
         # Release sequences in reverse
         for keys in self._active_sequences.values():
             for key in reversed(keys):

@@ -19,9 +19,12 @@ from pathlib import Path
 # Allow running as `python src/main.py` or `python -m src.main`
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+logger = logging.getLogger(__name__)
+
 import pygame
 
 from src.config_loader import load_config
+from src.gui import MainWindow
 from src.joycon_reader import find_joycon, run_discover_mode, run_polling_loop, wait_for_reconnection
 from src.key_mapper import KeyMapper
 from src.tray_icon import create_tray_icon, run_tray
@@ -191,13 +194,23 @@ def main() -> None:
     )
     poll_thread.start()
 
-    # Create and run tray icon in main thread (blocks until quit)
-    icon = create_tray_icon(stop_event)
-    print("Tray icon active. Right-click to quit.")
-    run_tray(icon)
+    # Create GUI and tray
+    gui = MainWindow(key_mapper, key_mapper._window_cycler, stop_event)
+    key_mapper.set_tk_root(gui.root)
 
-    # Cleanup after tray exits
+    # Start tray icon in background thread
+    icon = create_tray_icon(stop_event, on_show_window=gui.show)
+    tray_thread = threading.Thread(target=run_tray, args=(icon,), daemon=True)
+    tray_thread.start()
+
+    print("GUI and tray active. Close window or right-click tray to quit.")
+
+    # Run GUI in main thread (blocks until window closed)
+    gui.run()
+
+    # Cleanup
     stop_event.set()
+    icon.stop()
     poll_thread.join(timeout=2.0)
     key_mapper.release_all()
     pygame.quit()
