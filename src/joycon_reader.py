@@ -138,6 +138,29 @@ def run_discover_mode(joystick_index: int | None = None) -> None:
         pygame.quit()
 
 
+def _calibrate_baseline(
+    joystick: pygame.joystick.Joystick,
+    axis_x: int,
+    axis_y: int,
+    samples: int = 20,
+) -> tuple[float, float]:
+    """Read stick resting position and return average as baseline.
+
+    Should be called at startup with the stick at rest.
+    """
+    clock = pygame.time.Clock()
+    total_x = 0.0
+    total_y = 0.0
+
+    for _ in range(samples):
+        pygame.event.pump()
+        total_x += joystick.get_axis(axis_x)
+        total_y += joystick.get_axis(axis_y)
+        clock.tick(100)
+
+    return (total_x / samples, total_y / samples)
+
+
 def run_polling_loop(
     joystick: pygame.joystick.Joystick,
     key_mapper: KeyMapper,
@@ -166,6 +189,10 @@ def run_polling_loop(
     logger.info("Polling started (deadzone=%.2f, interval=%.0fms, mode=%s)",
                 deadzone, poll_interval * 1000, stick_mode)
 
+    # Calibrate baseline: average resting position over 10 samples
+    baseline_x, baseline_y = _calibrate_baseline(joystick, axis_x, axis_y)
+    logger.info("Stick baseline: x=%.4f, y=%.4f", baseline_x, baseline_y)
+
     try:
         while not (stop_event and stop_event.is_set()):
             pygame.event.pump()
@@ -188,8 +215,8 @@ def run_polling_loop(
             prev_buttons = current_buttons
 
             # --- Stick polling ---
-            raw_x = joystick.get_axis(axis_x)
-            raw_y = joystick.get_axis(axis_y)
+            raw_x = joystick.get_axis(axis_x) - baseline_x
+            raw_y = joystick.get_axis(axis_y) - baseline_y
             filt_x, filt_y = apply_deadzone(raw_x, raw_y, deadzone)
             direction = get_direction(filt_x, filt_y, stick_mode)
 

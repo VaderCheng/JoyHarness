@@ -61,13 +61,13 @@ DEFAULT_MAPPINGS: dict = {
         "B":      {"action": "tap", "key": "escape"},
         "X":      {"action": "auto", "key": "f2"},
         "Y":      {"action": "sequence", "keys": ["alt", "tab"], "repeat": 500},
-        "R":      {"action": "hold", "key": "ctrl"},
+        "R":      {"action": "window_switch"},
         "ZR":     {"action": "hold", "key": "shift"},
         "Plus":   {"action": "combination", "keys": ["ctrl", "s"]},
         "Home":   {"action": "tap", "key": "windows"},
         "RStick": {"action": "tap", "key": "tab"},
         "SL":     {"action": "hold", "key": "alt"},
-        "SR":     {"action": "tap", "key": "f5"},
+        "SR":     {"action": "window_switch"},
     },
     "stick_directions": {
         "up":    {"action": "auto", "key": "down", "repeat": 100},
@@ -86,4 +86,4 @@ DEFAULT_CONFIG: dict = {
     "mappings": DEFAULT_MAPPINGS,
 }
 
-VALID_ACTIONS = ("tap", "hold", "auto", "combination", "sequence")
+VALID_ACTIONS = ("tap", "hold", "auto", "combination", "sequence", "window_switch")

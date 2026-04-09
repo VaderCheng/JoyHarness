@@ -1,11 +1,13 @@
 """Button/axis event to keyboard action translation engine.
 
 Translates Joy-Con R button presses and stick directions into keyboard
-actions based on the loaded configuration. Handles four action types:
+actions based on the loaded configuration. Handles these action types:
 - tap: press and release immediately (short press)
 - hold: press on button_down, release on button_up (for modifier keys)
 - auto: short press = tap, long press = hold (adaptive)
 - combination: press multiple keys simultaneously
+- sequence: hold modifier + tap keys, release on button up (e.g. Alt+Tab)
+- window_switch: cycle through VS Code windows
 """
 
 import time
@@ -13,6 +15,7 @@ import logging
 
 from . import keyboard_output
 from .constants import BUTTON_INDICES
+from .window_switcher import WindowCycler
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,9 @@ class KeyMapper:
         self._auto_pending: dict[int, tuple[str, float]] = {}
 
         self._long_threshold = long_threshold
+
+        # Window cycler for VS Code window switching
+        self._window_cycler = WindowCycler()
 
         logger.info(
             "KeyMapper initialized: %d button mappings, %d direction mappings, "
@@ -116,6 +122,13 @@ class KeyMapper:
                 }
             logger.debug("sequence DOWN [%s] → %s (held, repeat=%sms)",
                          btn_name, "+".join(keys), repeat_ms)
+
+        elif action == "window_switch":
+            target = self._window_cycler.next()
+            if target:
+                logger.info("window_switch [%s] → %s", btn_name, target.title)
+            else:
+                logger.warning("window_switch [%s] → no VS Code windows found", btn_name)
 
     def button_up(self, button_index: int) -> None:
         """Handle a button release event."""
