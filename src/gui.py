@@ -37,11 +37,11 @@ class MainWindow(ResizableMixin):
         self._root = ttk.Window(
             title="NS Joy-Con R 键盘映射器",
             themename="darkly",
-            size=(340, 300),
+            size=(453, 400),
             resizable=(True, True),
         )
         self._root.protocol("WM_DELETE_WINDOW", self._on_close)
-        self._root.minsize(300, 260)
+        self._root.minsize(400, 347)
 
         # Remove native title bar for a clean dark look
         self._root.overrideredirect(True)
@@ -113,18 +113,9 @@ class MainWindow(ResizableMixin):
 
         app_frame = ttk.Frame(main)
         app_frame.pack(fill=X, padx=(20, 0), pady=(0, 12))
+        self._app_frame = app_frame
 
-        for display_name, process_name in KNOWN_APPS.items():
-            var = ttk.BooleanVar(value=(process_name == "code.exe"))
-            self._app_vars[display_name] = var
-            cb = ttk.Checkbutton(
-                app_frame,
-                text=f"  {display_name}",
-                variable=var,
-                command=self._on_app_toggle,
-                bootstyle=INFO,
-            )
-            cb.pack(anchor=W, pady=3)
+        self._build_app_checkboxes()
 
         # Spacer
         ttk.Frame(main).pack(fill=BOTH, expand=True)
@@ -175,6 +166,32 @@ class MainWindow(ResizableMixin):
             self._key_mapper.release_all()
         logger.info("Stick mapping %s", "enabled" if enabled else "disabled")
 
+    def _build_app_checkboxes(self) -> None:
+        """Build/refresh app checkboxes from KNOWN_APPS."""
+        # Clear existing
+        for widget in self._app_frame.winfo_children():
+            widget.destroy()
+        self._app_vars.clear()
+
+        # Get current cycler targets to know which are checked
+        active_apps = set(self._window_cycler.app_names)
+
+        for display_name, process_name in KNOWN_APPS.items():
+            var = ttk.BooleanVar(value=(process_name in active_apps))
+            self._app_vars[display_name] = var
+            cb = ttk.Checkbutton(
+                self._app_frame,
+                text=f"  {display_name}",
+                variable=var,
+                command=self._on_app_toggle,
+                bootstyle=INFO,
+            )
+            cb.pack(anchor=W, pady=3)
+
+    def refresh_apps(self) -> None:
+        """Refresh app checkboxes (call after settings change)."""
+        self._build_app_checkboxes()
+
     def _on_app_toggle(self) -> None:
         """Handle app selection change."""
         selected = []
@@ -193,7 +210,7 @@ class MainWindow(ResizableMixin):
     def _open_settings(self) -> None:
         """Open the settings window."""
         from .settings_window import SettingsWindow
-        SettingsWindow(self._root, self._key_mapper, self._config, self._window_cycler)
+        SettingsWindow(self._root, self._key_mapper, self._config, self._window_cycler, main_window=self)
 
     def _on_close(self) -> None:
         """Handle window close — exit the program."""

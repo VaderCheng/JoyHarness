@@ -14,17 +14,18 @@ from .window_switcher import KNOWN_APPS
 
 logger = logging.getLogger(__name__)
 
-EDITABLE_ACTIONS = ("tap", "hold", "auto", "window_switch")
+EDITABLE_ACTIONS = ("tap", "hold", "auto", "combination", "sequence", "window_switch")
 MAPPABLE_BUTTONS = ["A", "B", "X", "Y", "R", "ZR", "Plus", "Home", "RStick", "SL", "SR"]
 
 
 class SettingsWindow(ResizableMixin):
     """Settings window for customizing button mappings and app list."""
 
-    def __init__(self, parent, key_mapper, config: dict, window_cycler) -> None:
+    def __init__(self, parent, key_mapper, config: dict, window_cycler, main_window=None) -> None:
         self._key_mapper = key_mapper
         self._config = config
         self._window_cycler = window_cycler
+        self._main_window = main_window
         self._rows: dict[str, dict] = {}
         self._app_rows: list[dict] = []
 
@@ -126,18 +127,23 @@ class SettingsWindow(ResizableMixin):
         key_entry = ttk.Entry(row, textvariable=key_var, width=14, bootstyle=SECONDARY)
 
         def on_action_change(event=None):
-            if action_var.get() == "window_switch":
+            action = action_var.get()
+            if action == "window_switch":
                 key_entry.configure(state=DISABLED)
                 key_var.set("")
             else:
                 key_entry.configure(state=NORMAL)
+                if action in ("combination", "sequence"):
+                    key_entry.configure(bootstyle=INFO)
+                else:
+                    key_entry.configure(bootstyle=SECONDARY)
 
         action_cb.bind("<<ComboboxSelected>>", on_action_change)
         action_cb.pack(side=LEFT, padx=(8, 0))
 
         if current_action == "window_switch":
             key_entry.configure(state=DISABLED)
-        elif current_action in ("combination", "sequence", "macro"):
+        elif current_action == "macro":
             action_var.set(current_action)
             action_cb.configure(state=DISABLED)
             key_entry.configure(state=DISABLED)
@@ -239,6 +245,17 @@ class SettingsWindow(ResizableMixin):
                     errors.append(f"{btn_name}: 按键不能为空")
                     continue
                 new_mappings[btn_name] = {"action": action, "key": key}
+            elif action in ("combination", "sequence"):
+                keys = [k.strip() for k in key.replace("+", ",").replace("，", ",").split(",") if k.strip()]
+                if not keys:
+                    errors.append(f"{btn_name}: {action} 至少需要一个按键")
+                    continue
+                entry = {"action": action, "keys": keys}
+                if action == "sequence":
+                    old = self._config["mappings"]["buttons"].get(btn_name, {})
+                    if old.get("action") == "sequence" and "repeat" in old:
+                        entry["repeat"] = old["repeat"]
+                new_mappings[btn_name] = entry
             elif action == "window_switch":
                 new_mappings[btn_name] = {"action": "window_switch"}
             else:
@@ -264,6 +281,10 @@ class SettingsWindow(ResizableMixin):
         KNOWN_APPS.update(apps)
         self._window_cycler.app_names = list(apps.values())
 
+        # Refresh main window app checkboxes
+        if self._main_window:
+            self._main_window.refresh_apps()
+
         logger.info("Settings applied. Apps: %s", apps)
         self._win.destroy()
 
@@ -280,6 +301,10 @@ class SettingsWindow(ResizableMixin):
             widgets["action_var"].set(action)
             if action in ("tap", "hold", "auto"):
                 widgets["key_var"].set(mapping.get("key", ""))
+                widgets["key_entry"].configure(state=NORMAL)
+                widgets["action_cb"].configure(state="readonly")
+            elif action in ("combination", "sequence"):
+                widgets["key_var"].set("+".join(mapping.get("keys", [])))
                 widgets["key_entry"].configure(state=NORMAL)
                 widgets["action_cb"].configure(state="readonly")
             elif action == "window_switch":
