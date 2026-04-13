@@ -2,7 +2,7 @@
 
 将 Nintendo Switch Joy-Con 手柄通过蓝牙连接到 Windows 11，映射为键盘快捷键。支持单个左手柄、单个右手柄、以及双手柄（L+R 组合设备）三种连接模式，自动检测并切换对应键位映射。
 
-![JoyHarness GUI](assets/screenshot2.png)
+![JoyHarness GUI](assets/screenshot.png)
 
 
 ## 功能特性
