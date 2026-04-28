@@ -2,8 +2,8 @@ pygame>=2.6.0
 pystray>=0.19.0
 Pillow>=10.0.0
 ttkbootstrap>=1.10.0
-hidapi>=0.14.0
-
+hidapi>=0.15.0
+ 
 # Platform-specific keyboard simulation:
 # - Windows: keyboard>=0.13.5
 # - macOS:   pynput>=1.7.6
