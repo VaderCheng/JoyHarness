@@ -16,6 +16,7 @@ from .constants import (
     AXIS_RSTICK_X,
     AXIS_RSTICK_Y,
     BUTTON_NAMES,
+    BUTTON_NAMES_BY_MODE,
     SNAPBACK_FRAMES,
 )
 from .joystick_handler import apply_deadzone, get_direction
@@ -143,11 +144,16 @@ def run_discover_mode(joystick_index: int | None = None) -> None:
         pygame.quit()
         return
 
+    # Use mode-aware button names for discover output
+    mode = detect_connection_mode()
+    btn_names = BUTTON_NAMES_BY_MODE.get(mode, BUTTON_NAMES)
+
     print(f"\n=== Discovery Mode ===")
     print(f"Controller: {js.get_name()}")
     print(f"GUID: {js.get_guid()}")
     print(f"Buttons: {js.get_numbuttons()}")
     print(f"Axes: {js.get_numaxes()}")
+    print(f"Connection mode: {mode}")
     print(f"\nPress buttons and move sticks to see their indices.")
     print(f"Press Ctrl+C to exit.\n")
 
@@ -158,7 +164,6 @@ def run_discover_mode(joystick_index: int | None = None) -> None:
         while True:
             pygame.event.pump()
 
-            # Button state
             current_buttons: set[int] = set()
             for i in range(js.get_numbuttons()):
                 if js.get_button(i):
@@ -168,11 +173,11 @@ def run_discover_mode(joystick_index: int | None = None) -> None:
             released = prev_buttons - current_buttons
 
             for i in sorted(pressed):
-                name = BUTTON_NAMES.get(i, "???")
+                name = btn_names.get(i, "???")
                 print(f"  BTN {i:2d} ({name:8s}) PRESSED")
 
             for i in sorted(released):
-                name = BUTTON_NAMES.get(i, "???")
+                name = btn_names.get(i, "???")
                 print(f"  BTN {i:2d} ({name:8s}) released")
 
             prev_buttons = current_buttons
@@ -264,6 +269,14 @@ def run_polling_loop(
         while not (stop_event and stop_event.is_set()):
             try:
                 pygame.event.pump()
+                # macOS: pygame.event.pump() does NOT raise on disconnect.
+                # Detect via JOYDEVICEREMOVED event or get_count() == 0.
+                for ev in pygame.event.get(pygame.JOYDEVICEREMOVED):
+                    logger.info("JOYDEVICEREMOVED received (instance_id=%s)",
+                                getattr(ev, "instance_id", "?"))
+                    raise pygame.error("Joystick device removed")
+                if pygame.joystick.get_count() == 0:
+                    raise pygame.error("No joysticks connected")
             except pygame.error:
                 # Joystick was disconnected
                 logger.warning("Joystick disconnected, attempting reconnection...")

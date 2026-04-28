@@ -9,6 +9,8 @@ Thread-safe: writes to shared variables protected by a threading.Lock.
 The GUI reads these variables via root.after() polling.
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 

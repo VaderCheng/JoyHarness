@@ -5,6 +5,8 @@ Joy-Con from entering sleep mode after ~30 minutes of inactivity.
 Uses the same HID protocol as test_rumble_concurrent.py.
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 

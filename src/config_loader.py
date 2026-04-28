@@ -4,6 +4,8 @@ Loads JSON config files, validates key names and action types,
 merges user config with built-in defaults, and saves config to disk.
 """
 
+from __future__ import annotations
+
 import copy
 import json
 import logging
@@ -21,7 +23,28 @@ from .constants import (
 logger = logging.getLogger(__name__)
 
 
-USER_CONFIG_PATH = str(Path(__file__).resolve().parent.parent / "config" / "user.json")
+_CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
+USER_CONFIG_PATH = str(_CONFIG_DIR / "user.json")
+
+
+def get_platform_config_path() -> str | None:
+    """Return the best config file path for the current platform.
+
+    Priority:
+    1. user.json (always preferred if it exists)
+    2. user-macos.json (macOS) or user-windows.json (Windows)
+    """
+    import sys
+    user = _CONFIG_DIR / "user.json"
+    if user.exists():
+        return str(user)
+    if sys.platform == "darwin":
+        plat = _CONFIG_DIR / "user-macos.json"
+    else:
+        plat = _CONFIG_DIR / "user-windows.json"
+    if plat.exists():
+        return str(plat)
+    return None
 
 
 def load_config(path: str | None = None) -> dict:
@@ -252,13 +275,9 @@ def _validate_mapping_entry(name: str, mapping: dict) -> list[str]:
 
 
 def _is_valid_key(key_name: str) -> bool:
-    """Check if a key name is recognized by the keyboard library."""
-    import keyboard
-    try:
-        codes = keyboard.key_to_scan_codes(key_name)
-        return len(codes) > 0
-    except (ValueError, KeyError):
-        return False
+    """Check if a key name is recognized by the keyboard backend."""
+    from .keyboard_output import is_valid_key
+    return is_valid_key(key_name)
 
 
 def save_config(config: dict, path: str | None = None) -> None:

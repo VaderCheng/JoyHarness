@@ -1,6 +1,16 @@
 pygame>=2.6.0
-keyboard>=0.13.5
 pystray>=0.19.0
 Pillow>=10.0.0
 ttkbootstrap>=1.10.0
- 
+hidapi>=0.14.0
+
+# Platform-specific keyboard simulation:
+# - Windows: keyboard>=0.13.5
+# - macOS:   pynput>=1.7.6
+# Install the one for your platform:
+keyboard>=0.13.5; sys_platform == "win32"
+pynput>=1.7.6; sys_platform == "darwin"
+
+# macOS: native window enumeration + activation (avoids slow osascript subprocesses)
+pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"

@@ -1,11 +1,16 @@
-"""Main GUI for NS Joy-Con R Keyboard Mapper.
+"""Main GUI for NS Joy-Con Keyboard Mapper.
 
 Uses ttkbootstrap for a modern dark theme appearance.
 Provides controls for:
 - Enabling/disabling stick mapping
 - Selecting target applications for window switching (R key)
+
+Cross-platform: Windows and macOS.
 """
 
+from __future__ import annotations
+
+import sys
 import logging
 import threading
 
@@ -21,6 +26,8 @@ from .resizable import ResizableMixin
 from .window_switcher import WindowCycler, KNOWN_APPS
 
 logger = logging.getLogger(__name__)
+
+_UI_FONT = "Helvetica" if sys.platform == "darwin" else "Microsoft YaHei UI"
 
 
 class MainWindow(ResizableMixin):
@@ -55,15 +62,20 @@ class MainWindow(ResizableMixin):
         self._root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._root.minsize(400, 347)
 
-        # Remove native title bar for a clean dark look
-        self._root.overrideredirect(True)
+        # On Windows, remove native title bar for a clean dark look.
+        # On macOS, keep the native title bar for better system integration
+        # (Dock icon, Mission Control, system-native minimize/close).
+        self._frameless = sys.platform != "darwin"
+        if self._frameless:
+            self._root.overrideredirect(True)
         self._root.attributes("-topmost", False)
 
         # App selection variables: display_name → BooleanVar
         self._app_vars: dict = {}
 
         self._build_ui()
-        self._setup_resize()
+        if self._frameless:
+            self._setup_resize()
         self._center_window()
 
     def _build_ui(self) -> None:
@@ -73,35 +85,35 @@ class MainWindow(ResizableMixin):
         from .constants import MODE_LABELS
         mode_label = MODE_LABELS.get(self._connection_mode, self._connection_mode)
 
-        # Custom title bar (draggable, with close & minimize buttons)
-        titlebar = ttk.Frame(root, cursor="fleur")
-        titlebar.pack(fill=X)
+        # On macOS, set the native window title instead
+        self._root.title(f"JoyHarness [{mode_label}]")
 
-        # Title text in title bar
-        title_text = ttk.Label(
-            titlebar,
-            text=f"  JoyHarness [{mode_label}]",
-            font=("Microsoft YaHei UI", 12, "bold"),
-            bootstyle=INFO,
-        )
-        title_text.pack(side=LEFT, padx=(8, 0), pady=8)
+        if self._frameless:
+            # Custom title bar (draggable, with close & minimize buttons) — Windows only
+            titlebar = ttk.Frame(root, cursor="fleur")
+            titlebar.pack(fill=X)
 
-        # Minimize & close buttons
-        close_btn = ttk.Label(titlebar, text=" ✕ ", font=("", 11), bootstyle=DANGER, cursor="hand2")
-        close_btn.pack(side=RIGHT, padx=(0, 4), pady=6)
-        close_btn.bind("<Button-1>", lambda e: self._on_close())
+            title_text = ttk.Label(
+                titlebar,
+                text=f"  JoyHarness [{mode_label}]",
+                font=(_UI_FONT, 12, "bold"),
+                bootstyle=INFO,
+            )
+            title_text.pack(side=LEFT, padx=(8, 0), pady=8)
 
-        min_btn = ttk.Label(titlebar, text=" ─ ", font=("", 11), bootstyle=SECONDARY, cursor="hand2")
-        min_btn.pack(side=RIGHT, padx=(0, 2), pady=6)
-        min_btn.bind("<Button-1>", lambda e: self._on_minimize_click())
+            close_btn = ttk.Label(titlebar, text=" ✕ ", font=("", 11), bootstyle=DANGER, cursor="hand2")
+            close_btn.pack(side=RIGHT, padx=(0, 4), pady=6)
+            close_btn.bind("<Button-1>", lambda e: self._on_close())
 
-        # Drag binding on title bar
-        for widget in (titlebar, title_text):
-            widget.bind("<ButtonPress-1>", self._start_drag)
-            widget.bind("<B1-Motion>", self._do_drag)
+            min_btn = ttk.Label(titlebar, text=" ─ ", font=("", 11), bootstyle=SECONDARY, cursor="hand2")
+            min_btn.pack(side=RIGHT, padx=(0, 2), pady=6)
+            min_btn.bind("<Button-1>", lambda e: self._on_minimize_click())
 
-        # Separator below title bar
-        ttk.Separator(root).pack(fill=X)
+            for widget in (titlebar, title_text):
+                widget.bind("<ButtonPress-1>", self._start_drag)
+                widget.bind("<B1-Motion>", self._do_drag)
+
+            ttk.Separator(root).pack(fill=X)
 
         # Main content area
         main = ttk.Frame(root, padding=(20, 12, 20, 16))
@@ -133,7 +145,7 @@ class MainWindow(ResizableMixin):
         app_label = ttk.Label(
             main,
             text="R 键窗口切换目标：",
-            font=("Microsoft YaHei UI", 10),
+            font=(_UI_FONT, 10),
         )
         app_label.pack(anchor=W, pady=(0, 6))
 
@@ -153,7 +165,7 @@ class MainWindow(ResizableMixin):
         self._battery_label_l = ttk.Label(
             battery_frame,
             text="L: 检测中...",
-            font=("Microsoft YaHei UI", 9),
+            font=(_UI_FONT, 9),
             bootstyle=LIGHT,
         )
         self._battery_label_l.pack(side=LEFT)
@@ -161,7 +173,7 @@ class MainWindow(ResizableMixin):
         self._battery_label_r = ttk.Label(
             battery_frame,
             text="R: 检测中...",
-            font=("Microsoft YaHei UI", 9),
+            font=(_UI_FONT, 9),
             bootstyle=LIGHT,
         )
         self._battery_label_r.pack(side=RIGHT)
@@ -182,13 +194,14 @@ class MainWindow(ResizableMixin):
             width=12,
         ).pack(side=LEFT)
 
-        ttk.Button(
-            btn_frame,
-            text="最小化到托盘",
-            command=self._on_minimize_click,
-            bootstyle=SECONDARY,
-            width=12,
-        ).pack(side=RIGHT)
+        if sys.platform != "darwin":
+            ttk.Button(
+                btn_frame,
+                text="最小化到托盘",
+                command=self._on_minimize_click,
+                bootstyle=SECONDARY,
+                width=12,
+            ).pack(side=RIGHT)
 
     def _center_window(self) -> None:
         """Center the window on screen."""
@@ -262,13 +275,13 @@ class MainWindow(ResizableMixin):
 
         def _do_update():
             self._root.title(f"JoyHarness [{mode_label}]")
-            # Update the title bar label
-            for widget in self._root.winfo_children():
-                if isinstance(widget, ttk.Frame):
-                    for child in widget.winfo_children():
-                        if isinstance(child, ttk.Label) and "JoyHarness" in str(child.cget("text")):
-                            child.configure(text=f"  JoyHarness [{mode_label}]")
-                            return
+            if self._frameless:
+                for widget in self._root.winfo_children():
+                    if isinstance(widget, ttk.Frame):
+                        for child in widget.winfo_children():
+                            if isinstance(child, ttk.Label) and "JoyHarness" in str(child.cget("text")):
+                                child.configure(text=f"  JoyHarness [{mode_label}]")
+                                return
 
         self._root.after(0, _do_update)
 

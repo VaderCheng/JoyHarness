@@ -1,7 +1,8 @@
-"""NS Joy-Con R Keyboard Mapper — CLI entry point.
+"""NS Joy-Con Keyboard Mapper — CLI entry point.
 
-Maps Nintendo Switch Joy-Con R controller inputs to keyboard shortcuts.
+Maps Nintendo Switch Joy-Con controller inputs to keyboard shortcuts.
 Supports configurable key mappings via JSON config files.
+Cross-platform: Windows and macOS.
 
 Usage:
     python -m src                    # Run with default mappings
@@ -10,8 +11,9 @@ Usage:
     python -m src --config my.json   # Use custom config
 """
 
+from __future__ import annotations
+
 import argparse
-import ctypes
 import logging
 import os
 import sys
@@ -33,25 +35,25 @@ if __package__ is None:
 # hidapi can concurrently read battery reports from each one.
 os.environ.setdefault("SDL_JOYSTICK_HIDAPI_COMBINE_JOY_CONS", "0")
 
+# macOS: prevent SDL2 from installing its NSApplication subclass.
+# SDLApplication doesn't implement -macOSVersion, which Tk 9.0+ calls,
+# causing a crash on GUI startup. We don't need video — only joystick —
+# so the dummy video driver is safe and avoids the Cocoa hook.
+if sys.platform == "darwin":
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+
 import pygame
 
 from .battery_reader import BatteryReader
-from .config_loader import load_config, get_profile, USER_CONFIG_PATH
+from .config_loader import load_config, get_profile, get_platform_config_path, USER_CONFIG_PATH
 from .gui import MainWindow
 from .joycon_reader import find_joycon, detect_connection_mode, run_discover_mode, run_polling_loop, wait_for_reconnection
 from .keep_alive import KeepAliveManager
 from .key_mapper import KeyMapper
+from .platform.permission import has_required_permissions, get_permission_warning
 from .tray_icon import create_tray_icon, run_tray
 
 logger = logging.getLogger(__name__)
-
-
-def is_admin() -> bool:
-    """Check if the current process has administrator privileges."""
-    try:
-        return bool(ctypes.windll.shell32.IsUserAnAdmin())
-    except (AttributeError, OSError):
-        return False
 
 
 def list_controls(config: dict) -> None:
@@ -86,7 +88,6 @@ def list_controls(config: dict) -> None:
     print(f"Stick mode: {config.get('stick_mode', '4dir')}")
     print(f"Poll interval: {config.get('poll_interval', 0.01) * 1000:.0f}ms")
 
-    # Show available profiles
     profiles = config.get("profiles", {})
     if profiles:
         print("\nAvailable profiles:")
@@ -99,7 +100,7 @@ def list_controls(config: dict) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """Build CLI argument parser."""
     parser = argparse.ArgumentParser(
-        description="NS Joy-Con R Keyboard Mapper — Map controller buttons to keyboard shortcuts",
+        description="NS Joy-Con Keyboard Mapper — Map controller buttons to keyboard shortcuts",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -152,10 +153,30 @@ Examples:
     parser.add_argument(
         "--no-admin-warn",
         action="store_true",
-        help="Suppress administrator privilege warning",
+        help="Suppress administrator/permission warning",
     )
 
     return parser
+
+
+def _get_pairing_instructions() -> str:
+    """Return platform-specific Joy-Con pairing instructions."""
+    if sys.platform == "darwin":
+        return (
+            "\nPairing instructions (macOS):\n"
+            "  1. System Settings → Bluetooth\n"
+            "  2. Hold the small pairing button on the Joy-Con rail for 3 seconds\n"
+            "  3. Lights will flash rapidly — select 'Joy-Con (R)' or 'Joy-Con (L)' in Bluetooth list\n"
+            "  4. Run --discover to verify connection"
+        )
+    else:
+        return (
+            "\nPairing instructions:\n"
+            "  1. Windows Settings → Bluetooth & devices → Add device\n"
+            "  2. Hold the small pairing button on the Joy-Con rail for 3 seconds\n"
+            "  3. Lights will flash rapidly — select 'Joy-Con R' in Bluetooth list\n"
+            "  4. Run --discover to verify connection"
+        )
 
 
 def main() -> None:
@@ -178,16 +199,14 @@ def main() -> None:
         handlers=handlers,
     )
 
-    # Admin check
-    if not args.no_admin_warn and not is_admin():
-        print("WARNING: Not running as administrator. Keyboard simulation may not work.")
-        print("         Try: run.bat  or  run as admin in PowerShell")
-        print()
+    # Permission check
+    if not args.no_admin_warn and not has_required_permissions():
+        print(get_permission_warning())
 
-    # Load config — prefer user config if it exists
+    # Load config — prefer platform-specific user config if it exists
     config_path = args.config
-    if config_path is None and Path(USER_CONFIG_PATH).exists():
-        config_path = USER_CONFIG_PATH
+    if config_path is None:
+        config_path = get_platform_config_path()
     try:
         config = load_config(config_path)
     except (FileNotFoundError, ValueError) as e:
@@ -211,17 +230,18 @@ def main() -> None:
         run_discover_mode(args.joystick)
         return
 
-    # Normal mode
-    pygame.init()
+    # Normal mode — selectively init only the pygame subsystems we need.
+    # pygame.init() starts ALL subsystems (video, audio, font, mixer, etc.)
+    # which on macOS causes SDL2 to install Cocoa event handlers that
+    # interfere with tkinter's window management (blocking minimize button).
+    # We only need display (for event pump), joystick, and implicitly timer.
+    pygame.display.init()
+    pygame.joystick.init()
 
     js = find_joycon(args.joystick)
     if js is None:
-        print("No Joy-Con R detected.")
-        print("\nPairing instructions:")
-        print("  1. Windows Settings → Bluetooth & devices → Add device")
-        print("  2. Hold the small pairing button on the Joy-Con rail for 3 seconds")
-        print("  3. Lights will flash rapidly — select 'Joy-Con R' in Bluetooth list")
-        print("  4. Run --discover to verify connection")
+        print("No Joy-Con detected.")
+        print(_get_pairing_instructions())
         pygame.quit()
         sys.exit(1)
 
@@ -279,24 +299,36 @@ def main() -> None:
     )
     poll_thread.start()
 
-    # Start tray icon in background thread
-    icon = create_tray_icon(stop_event, on_show_window=gui.show)
-    tray_thread = threading.Thread(target=run_tray, args=(icon,), daemon=True)
-    tray_thread.start()
+    # Start tray icon in background thread (Windows only)
+    # macOS: pystray requires NSApplication.run on the main thread, which
+    # conflicts with tkinter's mainloop. Since macOS has Dock + Cmd+Tab for
+    # app switching, the tray icon is not essential. Skipping it avoids a
+    # 99% CPU spin caused by NSApplication threading violations.
+    icon = None
+    tray_thread = None
+    if sys.platform != "darwin":
+        icon = create_tray_icon(stop_event, on_show_window=gui.show)
+        tray_thread = threading.Thread(target=run_tray, args=(icon,), daemon=True)
+        tray_thread.start()
 
-    print("GUI and tray active. Close window or right-click tray to quit.")
+    if sys.platform == "darwin":
+        print("GUI active. Close window to quit.")
+    else:
+        print("GUI and tray active. Close window or right-click tray to quit.")
 
     # Run GUI in main thread (blocks until window closed)
     gui.run()
 
     # Cleanup
     stop_event.set()
-    icon.stop()
+    if icon is not None:
+        icon.stop()
     poll_thread.join(timeout=2.0)
     battery_reader.join(timeout=2.0)
     keep_alive_manager.join(timeout=2.0)
     key_mapper.release_all()
-    pygame.quit()
+    pygame.joystick.quit()
+    pygame.display.quit()
     print("Clean exit. All keys released.")
 
 

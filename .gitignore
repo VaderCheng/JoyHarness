@@ -1,22 +1,24 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
 dist/
 build/
-.eggs/
 *.egg
 
+# Virtual environments
 .venv/
 venv/
 env/
 
+# Runtime files
 calibration_result.json
-.claude/
-config/user.json
 nsjc.log
-scripts/
-Doc/
-Docs/
-CLAUDE.md
 config/user.json
+
+# IDE / tooling
+.claude/
+.vscode/
+.idea/
+.DS_Store

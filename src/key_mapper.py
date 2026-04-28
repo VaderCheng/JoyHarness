@@ -4,11 +4,16 @@ Translates Joy-Con R button presses and stick directions into keyboard
 actions based on the loaded configuration. Handles these action types:
 - tap: press and release immediately (short press)
 - hold: press on button_down, release on button_up (for modifier keys)
-- auto: short press = tap, long press = hold (adaptive)
+- auto: short press = tap; long press = hold by default, OR re-tap at `repeat`-ms interval if mapping has `repeat` field set (e.g. backspace deleting many chars)
 - combination: press multiple keys simultaneously
 - sequence: hold modifier + tap keys, release on button up (e.g. Alt+Tab)
 - window_switch: cycle through VS Code windows
+- exec: launch a shell command (useful for macOS system actions like
+  triggering Mission Control via `open -a "Mission Control"`, where
+  pynput-synthesized hotkeys can't reach the system event handler)
 """
+
+from __future__ import annotations
 
 import time
 import logging
@@ -62,6 +67,10 @@ class KeyMapper:
         # Track auto-action pending state: btn_idx → (key, press_time)
         self._auto_pending: dict[int, tuple[str, float]] = {}
 
+        # Track button auto-action re-tap repeat: btn_idx → {key, interval, last_time}
+        # Populated when an auto-action with `repeat` field reaches long-press threshold.
+        self._button_repeat: dict[int, dict] = {}
+
         self._long_threshold = long_threshold
 
         # Stick mapping enabled (controllable from GUI)
@@ -73,6 +82,7 @@ class KeyMapper:
         # Window switch overlay and state (tkinter root set later via set_tk_root)
         self._switcher_overlay: SwitcherOverlay | None = None
         self._ws_held: bool = False
+        self._ws_button_index: int = -1  # tracks which button triggered window_switch
         self._ws_press_time: float = 0.0
         self._ws_overlay_active: bool = False
         self._ws_last_move: float = 0.0
@@ -89,7 +99,7 @@ class KeyMapper:
     def _on_overlay_select(self, window_info: "WindowInfo") -> None:
         """Callback when overlay selection is confirmed."""
         from .window_switcher import switch_to_window
-        switch_to_window(window_info.hwnd)
+        switch_to_window(window_info)
 
     def set_tk_root(self, root: "tk.Tk") -> None:
         """Set the tkinter root for overlay creation. Call from main thread."""
@@ -99,10 +109,17 @@ class KeyMapper:
 
     def _find_current_window_index(self, windows: list["WindowInfo"]) -> int:
         """Find the index of the current foreground window in the list."""
-        hwnd = get_foreground_hwnd()
-        for i, w in enumerate(windows):
-            if w.hwnd == hwnd:
-                return i
+        import sys
+        if sys.platform == "win32":
+            hwnd = get_foreground_hwnd()
+            for i, w in enumerate(windows):
+                if w.hwnd == hwnd:
+                    return i
+        else:
+            fg_name = get_foreground_process_name()
+            for i, w in enumerate(windows):
+                if w.app_name.lower() == fg_name:
+                    return i
         return 0
 
     def button_down(self, button_index: int) -> None:
@@ -159,14 +176,18 @@ class KeyMapper:
                          btn_name, "+".join(keys), repeat_ms)
 
         elif action == "window_switch":
-            # Record press time, decide short vs long in poll/button_up
+            # Record press time and button index, decide short vs long in poll/button_up
             self._ws_held = True
+            self._ws_button_index = button_index
             self._ws_press_time = time.monotonic()
             self._ws_overlay_active = False
             logger.debug("window_switch DOWN [%s] (waiting)", btn_name)
 
         elif action == "macro":
             self._execute_macro(mapping, btn_name)
+
+        elif action == "exec":
+            self._execute_exec(mapping, btn_name)
 
     def button_up(self, button_index: int) -> None:
         """Handle a button release event."""
@@ -204,10 +225,15 @@ class KeyMapper:
                     self._active_holds.pop(button_index, None)
                 logger.debug("auto UP [%s] → release %s (%.0fms)", btn_name, key, elapsed * 1000)
 
-        # Handle window_switch release
-        if self._ws_held:
+        # Handle auto re-tap repeat release (no key release needed — each was a tap)
+        if button_index in self._button_repeat:
+            info = self._button_repeat.pop(button_index)
+            logger.debug("auto UP [%s] → stop repeat %s", btn_name, info["key"])
+
+        # Handle window_switch release — only if this is the button that started it
+        if self._ws_held and button_index == self._ws_button_index:
             self._ws_held = False
-            btn_name = _button_label(button_index, self._mode)
+            self._ws_button_index = -1
 
             if self._ws_overlay_active and self._switcher_overlay:
                 # Long press: select the highlighted window and hide overlay
@@ -237,12 +263,35 @@ class KeyMapper:
         for btn_idx in list(self._auto_pending.keys()):
             key, press_time = self._auto_pending[btn_idx]
             if now - press_time >= self._long_threshold:
-                keyboard_output.press(key)
-                self._active_holds[btn_idx] = key
                 btn_name = _button_label(btn_idx, self._mode)
-                logger.debug("auto HOLD [%s] → %s (after %.0fms)",
-                             btn_name, key, (now - press_time) * 1000)
+                mapping = self._button_mappings.get(btn_idx, {})
+                repeat_ms = mapping.get("repeat", 0)
+                if repeat_ms > 0:
+                    # Re-tap mode: tap once now, then poll() keeps tapping at interval.
+                    # Used for keys like backspace where the OS doesn't auto-repeat
+                    # synthetic CGEvent keyDowns held by pynput.
+                    keyboard_output.tap(key)
+                    self._button_repeat[btn_idx] = {
+                        "key": key,
+                        "interval": repeat_ms / 1000.0,
+                        "last_time": now,
+                    }
+                    logger.debug("auto REPEAT [%s] → %s every %dms (after %.0fms)",
+                                 btn_name, key, repeat_ms, (now - press_time) * 1000)
+                else:
+                    # Hold mode: press and hold until button_up.
+                    keyboard_output.press(key)
+                    self._active_holds[btn_idx] = key
+                    logger.debug("auto HOLD [%s] → %s (after %.0fms)",
+                                 btn_name, key, (now - press_time) * 1000)
                 del self._auto_pending[btn_idx]
+
+        # Button auto re-tap repeat (e.g. backspace held = delete many chars)
+        for btn_idx in list(self._button_repeat.keys()):
+            info = self._button_repeat[btn_idx]
+            if now - info["last_time"] >= info["interval"]:
+                keyboard_output.tap(info["key"])
+                info["last_time"] = now
 
         # Stick auto-actions: already activated immediately in stick_direction(), no pending check needed
 
@@ -359,6 +408,7 @@ class KeyMapper:
         """Release all currently held keys and cancel pending auto actions."""
         # Hide overlay if active
         self._ws_held = False
+        self._ws_button_index = -1
         self._ws_overlay_active = False
         if self._switcher_overlay:
             self._switcher_overlay.hide()
@@ -369,6 +419,7 @@ class KeyMapper:
         self._active_sequences.clear()
         self._sequence_repeat.clear()
         self._stick_repeat.clear()
+        self._button_repeat.clear()
         # Release holds
         for key in self._active_holds.values():
             keyboard_output.release(key)
@@ -427,6 +478,28 @@ class KeyMapper:
             else:
                 logger.warning("macro [%s] unknown step type '%s' at step %d",
                                btn_name, step_type, i)
+
+    def _execute_exec(self, mapping: dict, btn_name: str) -> None:
+        """Run a shell command. Non-blocking via Popen.
+
+        Config format:
+            {"action": "exec", "command": "open -a 'Mission Control'"}
+            # or list form (no shell parsing):
+            {"action": "exec", "command": ["open", "-a", "Mission Control"]}
+        """
+        import subprocess
+        cmd = mapping.get("command")
+        if not cmd:
+            logger.warning("exec [%s] missing 'command' field", btn_name)
+            return
+        try:
+            if isinstance(cmd, str):
+                subprocess.Popen(cmd, shell=True)
+            else:
+                subprocess.Popen(list(cmd))
+            logger.debug("exec [%s] → %s", btn_name, cmd)
+        except Exception:
+            logger.exception("exec [%s] failed: %s", btn_name, cmd)
 
 
 def _button_label(button_index: int, mode: str = "single_right") -> str:

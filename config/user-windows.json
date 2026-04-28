@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "description": "Joy-Con R to keyboard mapping (macOS)",
+  "description": "Default Joy-Con R to keyboard mapping",
   "deadzone": 0.2,
   "poll_interval": 0.01,
   "stick_mode": "4dir",
@@ -13,43 +13,67 @@
         "key": "enter"
       },
       "B": {
-        "action": "auto",
-        "key": "backspace",
-        "repeat": 100
-      },
-      "X": {
-        "action": "tap",
-        "key": "escape"
-      },
-      "Y": {
-        "action": "combination",
+        "action": "sequence",
         "keys": [
-          "cmd",
+          "shift",
           "tab"
         ]
       },
+      "X": {
+        "action": "auto",
+        "key": "f2"
+      },
+      "Y": {
+        "action": "sequence",
+        "keys": [
+          "alt",
+          "tab"
+        ],
+        "repeat": 500
+      },
       "R": {
-        "action": "exec",
-        "command": [
-          "open",
-          "-a",
-          "Mission Control"
-        ]
+        "action": "window_switch"
       },
       "ZR": {
-        "action": "hold",
-        "key": "alt_r"
+        "action": "macro",
+        "if_window": "code.exe",
+        "steps": [
+          {
+            "type": "combination",
+            "keys": [
+              "ctrl",
+              "shift",
+              "p"
+            ]
+          },
+          {
+            "type": "delay",
+            "ms": 100
+          },
+          {
+            "type": "type",
+            "text": "Claude Code: Focus input"
+          },
+          {
+            "type": "delay",
+            "ms": 100
+          },
+          {
+            "type": "tap",
+            "key": "enter"
+          }
+        ]
       },
       "Plus": {
-        "action": "hold",
-        "key": "cmd_r"
-      },
-      "Home": {
         "action": "combination",
         "keys": [
-          "cmd",
-          "space"
+          "ctrl",
+          "s"
         ]
+      },
+      "Home": {
+        "action": "tap",
+        "key": "windows"
       },
       "RStick": {
         "action": "tap",
@@ -57,7 +81,7 @@
       },
       "SL": {
         "action": "hold",
-        "key": "cmd"
+        "key": "alt"
       },
       "SR": {
         "action": "window_switch"
@@ -87,12 +111,14 @@
     }
   },
   "known_apps": {
-    "Ghostty": "Ghostty",
-    "微信": "微信",
-    "飞书": "飞书",
-    "反重力": "Antigravity"
+    "VS Code": "code.exe",
+    "Chrome": "chrome.exe",
+    "飞书": "feishu.exe"
   },
-  "selected_apps": [],
+  "selected_apps": [
+    "code.exe",
+    "chrome.exe"
+  ],
   "profiles": {
     "single_right": {
       "mappings": {
@@ -102,43 +128,67 @@
             "key": "enter"
           },
           "B": {
-            "action": "auto",
-            "key": "backspace",
-            "repeat": 100
-          },
-          "X": {
-            "action": "tap",
-            "key": "escape"
-          },
-          "Y": {
-            "action": "combination",
+            "action": "sequence",
             "keys": [
-              "cmd",
+              "shift",
               "tab"
             ]
           },
+          "X": {
+            "action": "auto",
+            "key": "f2"
+          },
+          "Y": {
+            "action": "sequence",
+            "keys": [
+              "alt",
+              "tab"
+            ],
+            "repeat": 500
+          },
           "R": {
-            "action": "exec",
-            "command": [
-              "open",
-              "-a",
-              "Mission Control"
-            ]
+            "action": "window_switch"
           },
           "ZR": {
-            "action": "hold",
-            "key": "alt_r"
+            "action": "macro",
+            "if_window": "code.exe",
+            "steps": [
+              {
+                "type": "combination",
+                "keys": [
+                  "ctrl",
+                  "shift",
+                  "p"
+                ]
+              },
+              {
+                "type": "delay",
+                "ms": 100
+              },
+              {
+                "type": "type",
+                "text": "Claude Code: Focus input"
+              },
+              {
+                "type": "delay",
+                "ms": 100
+              },
+              {
+                "type": "tap",
+                "key": "enter"
+              }
+            ]
           },
           "Plus": {
-            "action": "hold",
-            "key": "cmd_r"
-          },
-          "Home": {
             "action": "combination",
             "keys": [
-              "cmd",
-              "space"
+              "ctrl",
+              "s"
             ]
+          },
+          "Home": {
+            "action": "tap",
+            "key": "windows"
           },
           "RStick": {
             "action": "tap",
@@ -146,7 +196,7 @@
           },
           "SL": {
             "action": "hold",
-            "key": "cmd"
+            "key": "alt"
           },
           "SR": {
             "action": "window_switch"
@@ -192,33 +242,30 @@
             "key": "backspace"
           },
           "Y": {
-            "action": "combination",
+            "action": "sequence",
             "keys": [
-              "cmd",
+              "alt",
               "tab"
-            ]
+            ],
+            "repeat": 500
           },
           "L": {
             "action": "window_switch"
           },
           "ZL": {
             "action": "hold",
-            "key": "cmd"
+            "key": "ctrl"
           },
           "Minus": {
             "action": "combination",
             "keys": [
-              "cmd",
+              "ctrl",
               "s"
             ]
           },
           "Capture": {
-            "action": "combination",
-            "keys": [
-              "cmd",
-              "shift",
-              "3"
-            ]
+            "action": "tap",
+            "key": "print_screen"
           },
           "LStick": {
             "action": "tap",
@@ -260,63 +307,83 @@
             "key": "enter"
           },
           "B": {
-            "action": "auto",
-            "key": "backspace",
-            "repeat": 100
-          },
-          "X": {
-            "action": "tap",
-            "key": "escape"
-          },
-          "Y": {
-            "action": "combination",
+            "action": "sequence",
             "keys": [
-              "cmd",
+              "shift",
               "tab"
             ]
           },
+          "X": {
+            "action": "auto",
+            "key": "f2"
+          },
+          "Y": {
+            "action": "sequence",
+            "keys": [
+              "alt",
+              "tab"
+            ],
+            "repeat": 500
+          },
           "R": {
-            "action": "exec",
-            "command": [
-              "open",
-              "-a",
-              "Mission Control"
-            ]
+            "action": "window_switch"
           },
           "ZR": {
-            "action": "hold",
-            "key": "alt_r"
+            "action": "macro",
+            "if_window": "code.exe",
+            "steps": [
+              {
+                "type": "combination",
+                "keys": [
+                  "ctrl",
+                  "shift",
+                  "p"
+                ]
+              },
+              {
+                "type": "delay",
+                "ms": 100
+              },
+              {
+                "type": "type",
+                "text": "Claude Code: Focus input"
+              },
+              {
+                "type": "delay",
+                "ms": 100
+              },
+              {
+                "type": "tap",
+                "key": "enter"
+              }
+            ]
           },
           "L": {
             "action": "hold",
-            "key": "cmd"
+            "key": "ctrl"
           },
           "ZL": {
             "action": "hold",
             "key": "shift"
           },
           "Plus": {
-            "action": "hold",
-            "key": "cmd_r"
+            "action": "combination",
+            "keys": [
+              "ctrl",
+              "s"
+            ]
           },
           "Minus": {
             "action": "tap",
             "key": "escape"
           },
           "Home": {
-            "action": "combination",
-            "keys": [
-              "cmd",
-              "space"
-            ]
+            "action": "tap",
+            "key": "windows"
           },
           "Capture": {
-            "action": "combination",
-            "keys": [
-              "cmd",
-              "shift",
-              "3"
-            ]
+            "action": "tap",
+            "key": "print_screen"
           },
           "RStick": {
             "action": "tap",
@@ -328,14 +395,14 @@
           },
           "SL_L": {
             "action": "hold",
-            "key": "cmd"
+            "key": "alt"
           },
           "SR_L": {
             "action": "window_switch"
           },
           "SL_R": {
             "action": "hold",
-            "key": "cmd"
+            "key": "alt"
           },
           "SR_R": {
             "action": "window_switch"

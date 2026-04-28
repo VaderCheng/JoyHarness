@@ -7,11 +7,16 @@ All UI operations are thread-safe via _schedule() which uses root.after()
 to marshal calls to the main thread.
 """
 
+from __future__ import annotations
+
+import sys
 import tkinter as tk
 import logging
 from typing import Callable
 
 from .window_switcher import WindowInfo
+
+_UI_FONT = "Helvetica" if sys.platform == "darwin" else "Microsoft YaHei UI"
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +48,7 @@ class SwitcherOverlay:
         self._title_label = tk.Label(
             self._frame,
             text="切换窗口",
-            font=("Microsoft YaHei UI", 10),
+            font=(_UI_FONT, 10),
             fg="#cdd6f4",
             bg="#1e1e2e",
             anchor="w",
@@ -85,7 +90,7 @@ class SwitcherOverlay:
             lbl = tk.Label(
                 self._list_frame,
                 text=f"  {w.title}",
-                font=("Microsoft YaHei UI", 11),
+                font=(_UI_FONT, 11),
                 fg="#cdd6f4",
                 bg="#1e1e2e",
                 anchor="w",
@@ -138,6 +143,6 @@ class SwitcherOverlay:
     def _highlight(self) -> None:
         for i, lbl in enumerate(self._labels):
             if i == self._selected_index:
-                lbl.configure(bg="#313244", fg="#f5e0dc", font=("Microsoft YaHei UI", 11, "bold"))
+                lbl.configure(bg="#313244", fg="#f5e0dc", font=(_UI_FONT, 11, "bold"))
             else:
-                lbl.configure(bg="#1e1e2e", fg="#cdd6f4", font=("Microsoft YaHei UI", 11))
+                lbl.configure(bg="#1e1e2e", fg="#cdd6f4", font=(_UI_FONT, 11))

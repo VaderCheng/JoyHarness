@@ -4,6 +4,8 @@ Uses a circular deadzone algorithm that preserves the full analog range
 outside the deadzone while eliminating stick drift near center.
 """
 
+from __future__ import annotations
+
 import math
 import logging
 
@@ -83,25 +85,35 @@ def _direction_4dir(angle: float) -> str:
 
 
 def _direction_8dir(angle: float) -> str:
-    """Map angle to 8 directions (cardinal + diagonal)."""
+    """Map angle to 8 directions (cardinal + diagonal).
+
+    Each zone spans 45 degrees, centered on the cardinal/diagonal direction:
+      right:      -22.5 to  22.5
+      down-right:  22.5 to  67.5
+      down:        67.5 to 112.5
+      down-left: 112.5 to 157.5
+      left:      157.5 to 180 / -180 to -157.5
+      up-left:  -157.5 to -112.5
+      up:       -112.5 to  -67.5
+      up-right:  -67.5 to  -22.5
+    """
     angle = ((angle + 180) % 360) - 180
 
-    zones = [
-        (-157.5, "up"),
-        (-112.5, "up-right"),
-        (-67.5,  "right"),
-        (-22.5,  "right"),
-        (22.5,   "down-right"),
-        (67.5,   "down"),
-        (112.5,  "down"),
-        (157.5,  "down-left"),
-    ]
-
-    for boundary, direction in zones:
-        if angle < boundary:
-            return direction
-
-    # Handle the wrap-around zone (157.5 to 180 / -180 to -157.5) = left/up-left
-    if angle >= 157.5:
+    if angle < -157.5:
+        return "left"
+    elif angle < -112.5:
+        return "up-left"
+    elif angle < -67.5:
+        return "up"
+    elif angle < -22.5:
+        return "up-right"
+    elif angle < 22.5:
+        return "right"
+    elif angle < 67.5:
+        return "down-right"
+    elif angle < 112.5:
+        return "down"
+    elif angle < 157.5:
         return "down-left"
-    return "up-left"
+    else:
+        return "left"

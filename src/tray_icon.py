@@ -4,6 +4,8 @@ Provides a system tray icon with right-click context menu.
 Uses pystray for cross-platform tray support and Pillow for icon generation.
 """
 
+from __future__ import annotations
+
 import threading
 import logging
 from typing import Callable

@@ -2,8 +2,11 @@
 
 Uses a tabbed layout (Notebook) to separate button mappings
 from the window switch app list.
+
+Cross-platform: Windows and macOS.
 """
 
+import sys
 import logging
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import (
@@ -20,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 EDITABLE_ACTIONS = ("tap", "hold", "auto", "combination", "sequence", "window_switch")
 MAPPABLE_BUTTONS = ("A", "B", "X", "Y", "R", "ZR", "Plus", "Home", "RStick", "SL", "SR")
+
+_UI_FONT = "Helvetica" if sys.platform == "darwin" else "Microsoft YaHei UI"
 
 
 class SettingsWindow(ResizableMixin):
@@ -45,11 +50,14 @@ class SettingsWindow(ResizableMixin):
         self._win = ttk.Toplevel(parent)
         self._win.title("键位设置")
         self._win.resizable(True, True)
-        self._win.overrideredirect(True)
+        if sys.platform != "darwin":
+            self._win.overrideredirect(True)
         self._win.minsize(420, 400)
 
+        self._frameless = sys.platform != "darwin"
         self._build_ui()
-        self._setup_resize()
+        if self._frameless:
+            self._setup_resize()
         self._center_on_parent(parent)
 
     def _build_ui(self) -> None:
@@ -61,7 +69,7 @@ class SettingsWindow(ResizableMixin):
 
         ttk.Label(
             titlebar, text="  ⚙ 键位设置",
-            font=("Microsoft YaHei UI", 12, "bold"), bootstyle=INFO,
+            font=(_UI_FONT, 12, "bold"), bootstyle=INFO,
         ).pack(side=LEFT, padx=(8, 0), pady=8)
 
         close_btn = ttk.Label(titlebar, text=" ✕ ", font=("", 11), bootstyle=DANGER, cursor="hand2")
@@ -112,21 +120,21 @@ class SettingsWindow(ResizableMixin):
         # Header
         header = ttk.Frame(parent)
         header.pack(fill=X, pady=(0, 4))
-        ttk.Label(header, text="按钮", font=("Microsoft YaHei UI", 9, "bold"), width=8).pack(side=LEFT)
+        ttk.Label(header, text="按钮", font=(_UI_FONT, 9, "bold"), width=8).pack(side=LEFT)
         ttk.Label(
             header, text="动作类型",
-            font=("Microsoft YaHei UI", 9, "bold"), width=14,
+            font=(_UI_FONT, 9, "bold"), width=14,
         ).pack(side=LEFT, padx=(8, 0))
         ttk.Label(
             header, text="按键",
-            font=("Microsoft YaHei UI", 9, "bold"), width=14,
+            font=(_UI_FONT, 9, "bold"), width=14,
         ).pack(side=LEFT, padx=(8, 0))
 
         # Show which profile is being edited
         profile_label = MODE_LABELS.get(self._mode, self._mode)
         ttk.Label(
             header, text=f"[{profile_label}]",
-            font=("Microsoft YaHei UI", 9), bootstyle="info",
+            font=(_UI_FONT, 9), bootstyle="info",
         ).pack(side=RIGHT)
 
         ttk.Separator(parent).pack(fill=X, pady=(0, 4))
@@ -143,7 +151,7 @@ class SettingsWindow(ResizableMixin):
         row = ttk.Frame(parent)
         row.pack(fill=X, pady=2)
 
-        ttk.Label(row, text=btn_name, font=("Microsoft YaHei UI", 10), width=8).pack(side=LEFT)
+        ttk.Label(row, text=btn_name, font=(_UI_FONT, 10), width=8).pack(side=LEFT)
 
         current_action = mapping.get("action", "tap")
         action_var = ttk.StringVar(value=current_action)
@@ -198,7 +206,7 @@ class SettingsWindow(ResizableMixin):
         ttk.Label(
             parent,
             text="设置 R 键可在哪些应用间切换窗口：",
-            font=("Microsoft YaHei UI", 10),
+            font=(_UI_FONT, 10),
         ).pack(anchor=W, pady=(0, 8))
 
         # Header
@@ -206,11 +214,11 @@ class SettingsWindow(ResizableMixin):
         header.pack(fill=X, pady=(0, 4))
         ttk.Label(
             header, text="应用名称",
-            font=("Microsoft YaHei UI", 9, "bold"), width=18,
+            font=(_UI_FONT, 9, "bold"), width=18,
         ).pack(side=LEFT)
         ttk.Label(
             header, text="EXE 名称",
-            font=("Microsoft YaHei UI", 9, "bold"), width=20,
+            font=(_UI_FONT, 9, "bold"), width=20,
         ).pack(side=LEFT, padx=(8, 0))
         # placeholder for delete column
         ttk.Label(header, text="  ", width=4).pack(side=LEFT)
@@ -267,7 +275,10 @@ class SettingsWindow(ResizableMixin):
             if not exe:
                 errors.append(f"{name} 的 EXE 名称不能为空")
                 continue
-            apps[name] = exe.lower()
+            # Don't lowercase: macOS process names (kCGWindowOwnerName) are case-
+            # sensitive — "Antigravity" and "antigravity" are different. On Windows,
+            # exe-name comparison is already case-insensitive in find_windows.
+            apps[name] = exe
         return apps, errors
 
     # --- Apply / Reset ---
@@ -283,7 +294,15 @@ class SettingsWindow(ResizableMixin):
                 if not key:
                     errors.append(f"{btn_name}: 按键不能为空")
                     continue
-                new_mappings[btn_name] = {"action": action, "key": key}
+                entry = {"action": action, "key": key}
+                if action == "auto":
+                    # Preserve `repeat` field (controls re-tap interval on long press,
+                    # e.g. backspace deleting many chars). The settings UI doesn't expose
+                    # this field, so carry it forward from the existing config.
+                    old = self._config["mappings"]["buttons"].get(btn_name, {})
+                    if old.get("action") == "auto" and "repeat" in old:
+                        entry["repeat"] = old["repeat"]
+                new_mappings[btn_name] = entry
             elif action in ("combination", "sequence"):
                 keys = [k.strip() for k in key.replace("+", ",").replace("，", ",").split(",") if k.strip()]
                 if not keys:
